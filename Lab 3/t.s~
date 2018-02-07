@@ -1,0 +1,298 @@
+#
+# CMPUT 229: Cube Statistics Laboratory
+# Author: Jose Nelson Amaral
+# Date: December 2009
+#
+# Main program to read base array into memory,
+# read a several cube specifications
+# and print statistics for each cube.
+#
+	.data
+arena:
+	.space 32768
+Pedge:
+	.asciiz "edge = "
+PnegAvg:
+	.asciiz ", Negative Average = "
+PposAvg:	
+	.asciiz ", Positive Average = "
+Pnewline:
+	.asciiz "\n"
+
+# These data items will be used by the CubeStats method.
+	.globl countNeg
+	.globl countPos
+	.globl totalNeg
+	.globl totalPos
+totalNeg:	.word 0
+totalPos:	.word 0
+countNeg:	.word 0
+countPos:	.word 0
+
+######################################################################
+# Register usage:                                                    #
+# $s0: dimension                                                     #
+# $s1: size                                                          #
+# $s2: edge                                                          #
+# $s3: first                                                         #
+######################################################################
+	
+	.text
+	.globl power
+power:
+	li $v0, 1
+ploop:	
+	beqz $a1, pdone
+	mul $v0, $v0, $a0
+	subu $a1, $a1, 1
+	j ploop
+pdone:
+	jr $ra
+	
+	.globl main
+main:
+	subu     $sp, $sp, 4            # Adjust the stack to save $fp
+	sw	 $fp, 0($sp)            # Save $fp
+	move     $fp, $sp	        # $fp <-- $fp
+	subu     $sp, $sp, 4	        # Adjust stack to save $ra
+	sw	 $ra, -4($fp)	        # Save the return address ($ra)
+
+	# Get the dimension
+	li	 $v0, 5
+	syscall
+	move     $s0, $v0               # $s0 <-- dimension
+
+	# Get the size
+	li	 $v0, 5
+	syscall
+	move     $s1, $v0               # $s1 <-- size
+
+	# Calculate numelems
+	move     $a0, $s1	        # $a0 <-- size
+	move     $a1, $s0	        # $a1 <-- dimension
+	jal	 power		        # numelems <-- power(size,dimension)
+
+	# Read array
+	sll	 $v0,$v0,2	        # $v0 <-- 4*numelems
+	la	 $t5, arena	        # cursor <-- start of arena 
+	add	 $t6, $t5, $v0	        # $t6 <-- end of array
+ReadArray:
+	li	 $v0, 5
+	syscall			        # $v0 <-- element
+	sw	 $v0, 0($t5)	    # *cursor <-- element
+	addi $t5, $t5, 4	        # *cursor++
+	blt	 $t5, $t6, ReadArray # if(cursor<end of array) 
+
+forever:
+	# Read a Cube
+	la	 $s3, arena	        # first <-- start of arena
+	add	 $t2, $0, $0	        # d <-- 0
+	
+ReadCube:
+	# Get the corner, calculating its absolute location along the way
+	li	 $v0, 5
+	syscall			        # $v0 <-- cubed
+	move     $t4, $v0		# $t4 <-- cubed
+	blt	 $t4, $0, ExitMain	# if(cubed<0) ExitMain
+	move     $a0, $s1		# $a0 <-- size
+	sub      $a1, $s0, $t2		# $a1 <-- dimension - d
+	addi     $a1, $a1, -1       # $a1 <-- dimension - d - 1
+	jal	 power			# $v0 <-- power(size,d)
+	mul	 $t3, $t4, $v0	        # $t3 <-- cubed*power(size,dimension - d - 1)
+	sll      $t3, $t3, 2            # $t3 <-- 4*$t3 (offset)
+	add	 $s3, $s3, $t3	        # first = first + cubed*power(size,dimension - d - 1)
+	add	 $t2, $t2, 1	        # d <-- d + 1
+	blt	 $t2, $s0, ReadCube     # if(d<dimension) ReadCube
+
+	# Get the edge length
+	li	 $v0, 5
+	syscall				# $v0 <-- edge
+	move     $s2, $v0		# $s2 <-- edge
+
+	# Initialize totals and counts to be used by CubeStats
+	sw	$0, countNeg
+	sw	$0, countPos
+	sw	$0, totalNeg	
+	sw	$0, totalPos
+	# Set up the arguments and call CubeStats
+	move     $a0, $s0		# $a0 <-- dimension
+	move     $a1, $s1		# $a1 <-- size
+	move     $a2, $s3		# $a2 <-- first
+	move     $a3, $s2		# $a3 <-- edge
+	
+	jal	 CubeStats
+	# Get the averages into $t0, $t1
+	move     $t0, $v0
+	move     $t1, $v1
+
+	# Print the value of the edge
+	li       $v0, 4
+	la       $a0, Pedge
+	syscall
+	move     $a0, $s2
+	li       $v0, 1
+	syscall
+
+	# Print the value of the positive average
+	li       $v0, 4
+	la       $a0, PposAvg
+	syscall
+	move     $a0, $t1
+	li       $v0, 1
+	syscall
+
+	# Print the value of the negative average
+	li      $v0, 4
+	la      $a0, PnegAvg
+	syscall
+	move    $a0, $t0
+	li      $v0, 1
+	syscall
+	li		$v0, 4
+	la		$a0, Pnewline
+	syscall
+	j       forever
+	
+ExitMain:	
+	# Usual stuff at the end of the main
+	lw      $ra, -4($fp)
+	addu    $sp, $sp, 4
+	lw      $fp, 0($sp)
+	addu    $sp, $sp, 4
+	jr      $ra
+.text
+CubeStats:
+	subu $sp, $sp, 4
+	sw $fp, 0($sp)
+	move $fp, $sp
+	subu $sp, $sp, 36
+	
+	sw $s0, -4($fp)
+	sw $s1, -8($fp)
+	sw $s2, -12($fp)
+	sw $s3, -16($fp)
+	sw $s4, -20($fp)
+	sw $s5,	-24($fp)
+	sw $s6, -28($fp)
+	sw $s7, -32($fp)
+	sw $ra, -36($fp)
+	
+	move $t0, $a1 #size
+	move $t1, $a3 #edge
+	
+	sub $t2, $t0, $t1 # (size-edge)
+	addi $s7, $zero, 4
+	mult $t2, $s7
+	mflo $t2
+	
+	mult $t0, $t0
+	mflo $t0
+	addi $s0, $zero, 4 
+	mult $t0, $s0
+	mflo $t0
+	
+	#Address of ->	
+	move $s0, $a0 # dimension
+	move $s1, $a1 # size
+	move $s3, $a2 # corner
+	move $s6, $a2 # corner 2
+	move $s4, $a3 # edge
+	
+	addi $t3, $zero, 0
+	addi $t5, $zero, 0
+	addi $t6, $zero, 0
+	addi $t7, $zero, 0
+	addi $t8, $zero, 0
+	addi $t9, $zero, 0
+	
+	addi $s5, $zero, 1
+	
+	
+	Row:
+		beq $t3, $t1, NextRow 	# t3(in row) counter is equal to t1 edge
+		beq $t9, $t1, NextDim 	# t9(in nextrow) counter is equal to edge 
+				     	# just to do those number of rows		
+		lw $t4, 0($s3) 		#$t4 <-- the element at the indicated address
+		bgtz $t4, Pos		#check if positive
+		bltz $t4, Neg		# check if Negative
+		beq $t4, 0, Zer		# check if zero
+		
+		
+	Continue:
+		addi $s3, $s3, 4 	# goes to the next element
+		addi $t3, $t3, 1	#counts if taken the number of correct element
+		j Row			# go back loop
+	Pos:
+		addi $t5, $t5, 1 	#no of positive elements
+		add $t6, $t6, $t4 	# total positive
+		j Continue
+	Neg:
+		add $t7, $t7, 1
+		add $t8, $t8, $t4
+		j Continue
+	Zer:
+		# Do Nothing
+		# Blessed
+		j Continue
+		
+	NextRow:	
+		
+		beq $s0, 1, Avg		#dim counter equal to 1 no need to do next row/dim
+		add $s3, $s3, $t2	#t2 is size-edge * 4 -> goes to next row
+		addi $t3, $zero, 0 	#makes the comparison t3-0 for reuse in Row
+		addi $t9, $t9, 1	#count the number of rows
+		j Row
+		
+	NextDim:
+		beq $s5, $t1, Avg
+		addi $s5, $s5, 1
+		addi $t9, $zero, 0
+		add $s6, $s6, $t0	# going to the next dimension
+		move $s3, $s6		# putting the value to s3 as it has changed 
+		j Row
+	Avg:
+		beqz $t5, PosAddOne
+		j AvgContinue
+	PosAddOne:
+		add $t5, $zero, 1
+		j AvgContinue
+		
+	AvgContinue:
+		div $t6, $t5
+		mflo $t6
+		
+		beqz $t7, AddOne
+		j AvgContinue2
+	AddOne:
+		add $t7, $zero, 1
+		j AvgContinue2
+	
+	AvgContinue2: 
+		div $t8, $t7
+		mflo $t8
+		mfhi $t7 #remainder
+
+		bltz $t7 , SubOne
+		j Continue2
+		
+	SubOne:
+	
+		sub $t8, $t8, 1
+		j Continue2
+		
+	Continue2:
+		add $v0, $zero, $t8
+		add $v1, $zero, $t6
+	
+	lw $s0, -4($fp)
+	lw $s1, -8($fp)
+	lw $s2, -12($fp)
+	lw $s3, -16($fp)
+	lw $s4, -20($fp)
+	lw $s5,	-24($fp)
+	lw $s6, -28($fp)
+	lw $s7, -32($fp)
+	lw $ra, -36($fp)
+	addu $sp, $sp, 40
+	lw $fp, -4($sp)
+	jr $ra

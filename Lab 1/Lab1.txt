@@ -1,0 +1,57 @@
+
+
+
+1: Number = 35
+
+2: 000000d3
+
+3: 00400038
+
+4: 6 times loaded:
+lw1 : 00000014
+lw2 : 00000022
+lw3 : 00000034
+lw4 : 00000056
+lw5 : 00000013
+lw6 : 00000000 
+
+5 : [10010010]  -> 0x00000013 0x00000000 0x626d754e 0x3d207265
+
+	4E - N -> 10010018;
+	75 - u -> 10010019;
+	6D - m -> 1001001a;
+	62 - b -> 1001001b; 
+	65 - e -> 1001001c;
+	72 - r -> 1001001d
+
+6 : [0x800001c0] -> 0x3344003c -> "3" "D" "NUL" "<"
+
+7 : 0011 0011 0100 0100 0000 0000 0011 1100
+
+8 : 
+
+	.word w1,..., wn : Store the n 32-bit quantities in successive mem­ory words.
+		21 : 0x10010000
+		88 : 0x10010004
+		-5 : 0x10010008 -0x1001000e 
+		-10 : 0x1001000f - 0x10010022
+
+	.byte b1,..., bn : Store the n values in successive bytes of memory.
+		10, 'c' : 10010010 - 10010011
+
+	.aling : Align the next datum on a 2 n byte boundary. For example, .align 2 aligns the next value on a 			word boundary. .align 0 turns off automatic alignment of .half , .word , .float , and .double ­		directives until the next .data or .kdata directive.
+
+	.space n : Allocates n bytes of space in the current segment		
+
+	.asciiz str : Store the string str in memory and null-­terminate it.		
+		ABCD : 1001001d - 1001001f
+
+	.ascii str : Store the string str in memory, but do not null-terminate it.
+		10010022-10010023
+
+
+
+9 : print ADDR : print ($s0)
+
+10 : conditional and unconditional branches -> jump statmens -> loops
+

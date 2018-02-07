@@ -1,0 +1,552 @@
+# The following format is required for all submissions in CMPUT 229
+#
+# The following copyright notice does not apply to this file
+# It is included here because it should be included in all
+# solutions submitted by students.
+#
+#----------------------------------------------------------------
+#
+# CMPUT 229 Student Submission License
+# Version 1.0
+# Copyright 2017 Siddhant Khanna
+#
+# Unauthorized redistribution is forbidden in all circumstances. Use of this
+# software without explicit authorization from the author or CMPUT 229
+# Teaching Staff is prohibited.
+#
+# This software was produced as a solution for an assignment in the course
+# CMPUT 229 - Computer Organization and Architecture I at the University of
+# Alberta, Canada. This solution is confidential and remains confidential 
+# after it is submitted for grading.
+#
+# Copying any part of this solution without including this copyright notice
+# is illegal.
+#
+# If any portion of this software is included in a solution submitted for
+# grading at an educational institution, the submitter will be subject to
+# the sanctions for plagiarism at that institution.
+#
+# If this software is found in any public website or public repository, the
+# person finding it is kindly requested to immediately report, including 
+# the URL or other repository locating information, to the following email
+# address:
+#
+#          skhanna1@ualberta.ca
+#
+#---------------------------------------------------------------
+# Assignment:           3
+# Due Date:             October 30, 2017
+# Name:                 Siddhant khanna
+# Unix ID:              skhanna1
+# Lecture Section:      A1
+# Instructor:           J Nelson Amaral
+# Lab Section:          Monday(1400 - 1700)
+# Teaching Assistant:   Joe Johnson
+#---------------------------------------------------------------
+
+#---------------------------------------------------------------
+# FindLive iterates through the Codes to find the jal instruction
+# when it finds the jal instruction it goes to the instruction after
+# it and then calls gatherliveRegs to check if the instructions
+# after jal the registers are live or dead.
+# The code also iterates through allLiveRegs which indicate 
+# that the instruction at that specific jal has the bits which
+# resemble the 1 with live regs
+# 
+# Register Usage:
+#
+#   a0: has the beginning address
+#   $s1: has resultindex
+#   $s4: allLiveRegs
+#   $s5: liveRegs
+#   $s6: DeadStack
+#   $t9: beginning address
+#   $t0: 0xFFFFFFFF
+#   $t1: instruction of address
+#   $s3: deadStackIndex
+#   $s7: 0
+# 
+#
+#---------------------------------------------------------------
+
+
+.data
+    visited: .align 4
+             .space 1000         #number of instruction*number of functions*word 
+    allLiveRegs: .align 4
+                .space 4000      #number of functions*word (Each word has an jal code block)
+    liveRegs: .align 4
+                .space 4             #word
+    DeadStack: .align 4
+                .space 4000         #like visited(each instruction is branch)
+    begAdd: .align 4
+            .space 4
+.text
+findLive:
+    addi $sp, $sp, -48     #storing registers
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    sw $s4, 20($sp)
+    sw $s5, 24($sp)
+    sw $s6, 28($sp)
+    sw $s7, 32($sp)
+    sw $t0, 36($sp)
+    sw $t1, 40($sp)
+    sw $t2, 44($sp)
+
+    sw $a0, begAdd
+    # sw $a0, 0($s0)               # $s0 -> beginningAddressArg - $a0
+
+    li $s1, 0                    # ResultIndex = 0
+
+    la $s4, allLiveRegs
+    la $s5, liveRegs
+    la $s6, DeadStack
+
+    move $t9, $a0                #has the address of instruction
+    #getting all the jal instructions
+    Loop:
+        lw $t1, 0($t9)                #has the instruction
+
+        li $t0, 0xFFFFFFFF 
+
+        beq $t1, $t0, END           #sentinel
+                                    #Reaching end of program (no more JAL)
+        srl $t2, $t1, 26            #getting the opcode  
+        addi $t5, $zero, 0x00000003
+        bne $t2, $t5, NextIntr      #if not jal dont go through
+    
+        addi $s3, $zero, 0             #deadStackIndex = 0
+        move $a1, $s3                   #sending argument to gatherlive
+        addi $a2, $t9, 4            #address value after the jump
+        jal gatherLiveRegs             
+
+        sll $s1, $s1, 2             #resultindex*4
+        add $s4, $s4, $s1             #allLiveRegs + resultIndex - allLiveRegs[resultIndex]
+        sw $s5, 0($s4)                 #allLiveRegs[resultIndex] = liveRegs 
+
+        addi $s1, $s1, 1             #resultIndex ++
+
+        li $s7, 0                   #deadStack[0] = 0
+        add $s6, $s6, $s7
+        sw $s7, 0($s6)              
+
+        sw $s7, 0($s5)              #liveRegs = 0
+
+    NextIntr:
+        addi $t9, $t9, 4             #next instruction
+        j Loop
+
+END:
+    sll $s1, $s1, 2             #resultindex*4
+    add $s4, $s4, $s1             #allLiveRegs + resultIndex = allLiveRegs[resultIndex]
+    li $s2, -1
+    sw $s2, 0($s4)
+
+    lw $ra, 0($sp)
+    lw $s0, 4($sp)
+    lw $s1, 8($sp)
+    lw $s2, 12($sp)
+    lw $s3, 16($sp)
+    lw $s4, 20($sp)
+    lw $s5, 24($sp)
+    lw $s6, 28($sp)
+    lw $s7, 32($sp)
+    lw $t0, 36($sp)
+    lw $t1, 40($sp)
+    lw $t2, 44($sp)
+    addi $sp, $sp, 48
+
+    jr $ra
+
+
+#---------------------------------------------------------------
+# Iterates through the entire block of code between jal and jr $ra
+# Checks if the instruction is a branch or a jump
+# calculates their targets.
+# If the instruction is a jump or branch it then recursively calls
+# gatherLiveRegs.
+#
+#
+# Register Usage:
+#
+#   a0: has the beginning address
+#   a1: deadStackIndex
+#   $a2: PC+4 + signExtended
+#   $s1: PC+4 
+#   $t9: OpCode current instruction
+#   $t1: instruction of address
+#   $s3: deadStackIndex
+#   $s7: 0
+#   $t0: current position 
+#   $t3: instruction code for the current address
+#   #t4: visitedvisited[index]
+#   $t5: 1
+#   $t7: 26 bits of jump
+#   $s6: has the lower 16 bit of branch
+#
+#---------------------------------------------------------------
+
+gatherLiveRegs:
+#a1, has deadStackIndex
+#a2, current instruction(after jal)
+
+    addi $sp, $sp, -56     #storing registers
+    sw $ra, 0($sp)
+    sw $s0, 4($sp)
+    sw $s1, 8($sp)
+    sw $s2, 12($sp)
+    sw $s3, 16($sp)
+    sw $s4, 20($sp)
+    sw $s5, 24($sp)
+    sw $s6, 28($sp)
+    sw $s7, 32($sp)
+    sw $t4, 36($sp)
+    sw $t5, 40($sp)
+    sw $t6, 44($sp)
+    sw $t7, 48($sp)
+    sw $t8, 52($sp)
+
+    lw $t0, 0($a2)         #address of the current position instruction
+                          #after the jal
+
+    lw $t3, 0($t0)        #instruction of the current instruction
+
+    and $s0, $t3, 0x001FFFFF
+    bne $s0, 0x0008, END    #checking if we reached jr $ra(End of code block)
+
+    move $t1, $a1         #deadStackIndex
+
+    sub $t2, $t0, $a0     #index = address-beginningAddress
+    lw $t3, 0($t0)         #instruction = load instruction from address
+
+    la $t4, visited     #Visited
+    add $t4, $t4, $t2     #visited[index]
+
+    li $t5, 1              #~~~~~~
+    beq $t4, $t5, Term     #visited[index] == 1
+    srl $t5, $t3, 26        
+    beq $t5, 0x0000, Term     #instruction == jr $ra
+
+    li $t5, 1
+    sw $t5, 0($t4)             #visited[index] = 1
+
+    # move $a1, $t0#contains the instruction address
+    # move $a2, # contains the deadstackIndex
+
+    jal updateLiveRegs
+
+
+#FOR THE DIFFERENT PATH
+Targets:
+
+    srl $t9, $t3, 26    #OpCode current instruction
+
+    #if( instruction == jump )
+    #elif( instruction == branch )
+
+    beq $t9, 0x0001, calcTarget
+    beq $t9, 0x0004, calcTarget
+    beq $t9, 0x0005, calcTarget
+    beq $t9, 0x0006, calcTarget
+    beq $t9, 0x0007, calcTarget
+    beq $t9, 0x0002, jumpCalcTarget
+
+Ending:
+
+    j END2
+
+jumpCalcTarget:
+
+    li $s5, 0x03FFFFFF
+    and $t7, $t3, $s5   #26 bits of jump
+    addi $s1, $t0, 4            #PC+4
+    sll $t7, $t7, 2             # shift by 2
+
+    lui $s5, 0xF000
+    and $s1, $s1, $s5  #get the 4 MSB
+    or $t8, $t7, $s1           #concatenate the 4 MSB with PC+4
+
+    move $a1, $t1               #deadStackIndex
+    move $a2, $t8               #jump Target Address
+    
+    jal gatherLiveRegs
+
+    li $t6, 0                   #visited[index] = 0
+    sw $t6, 0($t4)
+
+    jr $ra
+
+
+calcTarget:
+    li $s5, 1
+    sll $s6, $t3, 16    #has the lower 16 bit of branch
+    sra $s6, $s6, 16
+
+    sll $s6, $s6, 2
+
+    addi $s2, $t3, 4    #PC+4
+
+    add $s3, $s2, $s6   #PC+4 + signExtended
+
+    addi $t1, $t1, 1    #deadStackIndex++
+
+    #cloneTopOfStack
+    la $s4, DeadStack
+    lw $s7, 0($s4)      #get the value stored at the deadStack
+    addi $s4, $s4, 4    #move to the next instruction
+    sw $s7, 0($s4)      #clone the instruction
+
+    move $a1, $t1       #deadStackIndex
+    move $a2, $s3         #instruction address
+
+    jal gatherLiveRegs
+
+    addi $t1, $t1, -1   #deadStackIndex--
+
+    j Ending
+
+END2:
+    addi $t0, $t0, 4    #address+4
+    move $a1, $t1       #DeadStackIndex
+    move $a2, $t0       #address
+
+    jal gatherLiveRegs  #gatherLiveRegs(address+4, deadStackIndex)
+
+    li $t5, 0
+    sw $t5, 0($t4)
+
+    la $v0, allLiveRegs
+
+    lw $ra, 0($sp)
+    lw $s0, 4($sp)
+    lw $s1, 8($sp)
+    lw $s2, 12($sp)
+    lw $s3, 16($sp)
+    lw $s4, 20($sp)
+    lw $s5, 24($sp)
+    lw $s6, 28($sp)
+    lw $s7, 32($sp)
+    lw $t4, 36($sp)
+    lw $t5, 40($sp)
+    lw $t6, 44($sp)
+    lw $t7, 48($sp)
+    lw $t8, 52($sp)
+    addi $sp, $sp, 56
+
+    jr $ra
+
+
+Term:
+    li $s5, 0             #visited[index] = 0    
+    sw  $s5, 0($t4)       #visited[index] = 0   
+    jr $ra
+
+
+
+#UPDATELIVE
+
+#---------------------------------------------------------------
+# Checks if the specific instruction has live or dead register
+# the code goes through live and dead. first it checks in dead
+# if it is dead then it doesnt update the live stack
+# if the position in the word bit pposition for the deadStack
+# of the register is 0 then you update live with 1.
+# you do sll or srl for the code to check and implement the
+# addition towards the code.
+#
+# Register Usage:
+#
+#   a0: has the beginning address
+#   a1: deadStackIndex
+#   $a2: PC+4 + signExtended
+#   $t9: rd (Dead)
+#   $s7: 0
+#   $t0: deadStackIndex*4
+#   #t4: shift the 1 to the rs position
+#   $t5: rs
+#   $t7: branch instructions
+#   $s6: loading address of liveRegs
+#   $t8: #rt (live)
+#
+#---------------------------------------------------------------
+updateLiveRegs:
+    lw $t6, 0($a2)      #current word
+    la $t0, 0($a1)       #deadStackIndex
+
+    la $s2, DeadStack
+    sll $t0, $t0, 2     #deadStackIndex*4
+    add $s2, $s2, $t0   #DeadStack[deadStackIndex]
+
+    srl $t7, $t6, 26    #OpCode current instruction
+
+    beq $t7, 0x0001, branch         #bgez/bltz
+    beq $t7, 0x0004, branch         #beq
+    beq $t7, 0x0005, branch         #bne
+    beq $t7, 0x0006, branch         #blez
+    beq $t7, 0x0007, branch         #bgtz
+
+    beq $t7, 0x0000, RTYPE          #RTYPE
+    
+    bne $t7, 0x0000, ITYPE    #ITYPE
+
+
+RTYPE:
+    sll $t5, $t6, 6     #rs (live)
+    srl $t5, $t5, 26    #rs
+    
+    sll $t8, $t6, 11    #rt (live)
+    srl $t8, $t8, 26    #rt
+
+    
+    #li $s6, 1           #RTYPE only one have two live registers: boolean
+    
+    sll $t9, $t6, 16    #rd (Dead)
+    srl $t9, $t9, 26    #rd
+
+    #liveness
+    li $t4, 1
+
+    #checking if dead rs
+    lw $s7, 0($s2)      #load the deadStack word
+    sllv $t4, $t4, $t5   #shift the 1 to the rs position
+    and $t4, $s7, $t4   #if return 1 then it is been marked dead
+    srlv $t4, $t4, $t5   #put it back to position 0 so that can compare
+    bne $t4, 1, makeLive1
+    j back              #next instruction
+
+makeLive1:
+    li $t4, 1
+    la $s6, liveRegs    #loading address of liveRegs
+
+    lw $s5, 0($s6)      #store the liveRegs in s5
+    sllv $t4, $t4, $t5   #shift the t4 by the position you want to make 1
+    or $s5, $s5, $t4    #or it to the s5 liveRegs word
+    sw $s5, 0($s6)      #store it back to the s5
+    j back
+
+back:
+
+    li $t4, 1
+    #checking if dead rt
+    lw $s7, 0($s2)      #load the deadStack word
+    sllv $t4, $t4, $t8   #shift the 1 to the rs position
+    and $t4, $s7, $t4   #if return 1 then it is been marked dead
+    srlv $t4, $t4, $t8   #put it back to position 0 so that can compare
+    bne $t4, 1, makeLive2 
+    j back2
+
+makeLive2:
+    li $t4, 1
+    la $s6, liveRegs    #loading address of liveRegs
+
+    lw $s5, 0($s6)      #store the liveRegs in s5
+    sllv $t4, $t4, $t8   #shift the t4 by the position you want to make 1
+    or $s5, $s5, $t4    #or it to the s5 liveRegs word
+    sw $s5, 0($s6)      #store it back to the s5
+    j back2
+
+back2:
+
+    li $t4, 1
+    #Making it dead rd
+    lw $s7, 0($s2)      #load the deadStack word
+    sllv $t4, $t4, $t9   #shift 1 to the position you want it to be 1
+    or $s7, $s7, $t4    #or it with the deadStack load word
+    sw $s7, 0($s2)      #store it in the deadStack
+
+    j continue
+
+ITYPE:
+    
+    sllv $t5, $t6, 6     #rs (live)
+    srlv $t5, $t5, 26    #rs
+    
+    sllv $t9, $t6, 11    #rt (Dead)
+    srlv $t9, $t9, 26    #rt
+    #li $s6, 0           #for not having second register
+    
+    li $t4, 1
+    #checking if dead rt
+    lw $s7, 0($s2)      #load the deadStack word
+    sllv $t4, $t4, $t5   #shift the 1 to the rs position
+    and $t4, $s7, $t4   #if return 1 then it is been marked dead
+    srlv $t4, $t4, $t5   #put it back to position 0 so that can compare
+    bne $t4, 1, makeLive3 
+    j back3
+
+#making it alive
+makeLive3:
+    li $t4, 1
+    la $s6, liveRegs    #loading address of liveRegs
+
+    lw $s5, 0($s6)      #store the liveRegs in s5
+    sllv $t4, $t4, $t5   #shift the t4 by the position you want to make 1
+    or $s5, $s5, $t4    #or it to the s5 liveRegs word
+    sw $s5, 0($s6)      #store it back to the s5
+    j back3
+
+back3:
+    li $t4, 1
+    #Making it dead rd
+    lw $s7, 0($s2)      #load the deadStack word
+    sllv $t4, $t4, $t9   #shift 1 to the position you want it to be 1
+    or $s7, $s7, $t4    #or it with the deadStack load word
+    sw $s7, 0($s2)      #store it in the deadStack
+
+    j continue
+
+branch:
+
+    sllv $t5, $t6, 6    #rs (live)
+    srlv $t5, $t5, 26
+
+    sllv $t8, $t6, 11
+    srlv $t8, $t8, 26   #rt (live)
+
+    li $t4, 1
+    #checking if dead rt
+    lw $s7, 0($s2)      #load the deadStack word
+    sllv $t4, $t4, $t5   #shift the 1 to the rs position
+    and $t4, $s7, $t4   #if return 1 then it is been marked dead
+    srlv $t4, $t4, $t5   #put it back to position 0 so that can compare
+    bne $t4, 1, makeLive4 
+    j back4
+
+#making it alive
+makeLive4:
+    li $t4, 1
+    la $s6, liveRegs    #loading address of liveRegs
+
+    lw $s5, 0($s6)      #store the liveRegs in s5
+    sllv $t4, $t4, $t5   #shift the t4 by the position you want to make 1
+    or $s5, $s5, $t4    #or it to the s5 liveRegs word
+    sw $s5, 0($s6)      #store it back to the s5
+    j back4
+
+back4:
+
+    lw $s7, 0($s2)      #load the deadStack word
+    sllv $t4, $t4, $t8   #shift the 1 to the rs position
+    and $t4, $s7, $t4   #if return 1 then it is been marked dead
+    srlv $t4, $t4, $t8   #put it back to position 0 so that can compare
+    bne $t4, 1, makeLive5 
+    j continue
+
+#making it alive
+makeLive5:
+    li $t4, 1
+    la $s6, liveRegs    #loading address of liveRegs
+
+    lw $s5, 0($s6)      #store the liveRegs in s5
+    sllv $t4, $t4, $t8   #shift the t4 by the position you want to make 1
+    or $s5, $s5, $t4    #or it to the s5 liveRegs word
+    sw $s5, 0($s6)      #store it back to the s5
+
+    j continue
+
+continue:
+    j Targets

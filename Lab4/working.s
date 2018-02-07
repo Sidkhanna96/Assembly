@@ -1,0 +1,208 @@
+#---------------------------------------------------------------
+# Assignment:           4
+# Due Date:             October 31, 2016
+# Name:                 Siddhant Khanna
+# Unix ID:              skhanna1
+# Lecture Section:      A1
+# Instructor:           Jose Nelson Amaral
+# Lab Section:          Lab D06(Thursday5-8)
+# Teaching Assistant:   Shantong Zhang
+#---------------------------------------------------------------
+
+
+#---------------------------------------------------------------
+# In this assignment we create a countdown timer without using syscall function. 
+# we ask the user to enter some integer value and Countdown from there until the 
+# counter reaches zero. we need to print the change in number in the same place. 
+# If the user presses the 'q' button on the keyboard the countdown should stop 
+# there. We store the values entered by the user in a mm:ss; i.e min:sec form.
+# We Store the digit in the space data and then overwritethe value by 1 second 
+# less by overwriting the original value. we use $9 and $11 of the co proc 0 $ 13 register 
+# to calculate 1 second. We manage the exception handler for keyboard and timer. And the 
+# Cause register tells us what the cause of the problem is.
+#
+# Register Usage:
+# $t0 : store value of user entered number
+# $t1 : has value 10 and 60 for dividing the numbers to convert them into mm:ss form
+# $t2 : contains the first m value of the given syntax. also used to get entire minute number
+# $t3 :	contains the first s. also used for getting the entire second number
+# $t4 : Second m value
+# $t5 : Second s value
+# $t6 : contains the : ASCII value
+# $t7 : conatins the backspace value 8
+# $t8 : conatins the value 0 to find null termination
+# $t9 : conatins the first address point of the space text
+# $a0 : Store the mask value to get the 11/ 15 position value in cause register
+# $v0 : Store values and print syscall
+# $k0 : Store values from registers and to enable registers
+# $13 : Cause of an exception found here. Cause Register
+# $12 : What kind of interruptions allowed. Status Register
+# $9 : used to calculate second. increases every 10ms
+# $11 : used for equality check with $9
+# $s0 : stores the values that were stored in space.
+# $s1 : Getting the Display Control Register. Checking if Display is available
+# $s2 : Enable Keyboard Control
+# $s3 : the last character typed
+# $s4 : Stores negative value
+# 
+#---------------------------------------------------------------
+
+
+# Used for printing and storing array values
+.data
+	sec: .asciiz "Seconds= "
+	space: .space 12
+
+.kdata
+	s1: .word 0
+	s2: .word 0
+
+# modifying our exception Handler here
+.ktext 0x80000180
+	sw $v0, s1 					# Reloading v0 and a0 registers
+	sw $a0, s2
+
+
+	mfc0 $k0, $13				# Cause Register values Stored
+	andi $a0, $k0, 0x0800  		# Get the 11 byte value 
+	srl $a0, $a0, 11			# Get the value stored at 11 to byte 1 position
+	bgtz $a0, Keyboard 			# if value more than zero hence keyboard interuption happened
+
+	mfc0 $k0, $13
+	andi $a0, $k0, 0x8000 		# Get the 15 byte value to check if timer interrupt happening
+	srl $a0, $a0, 15			# shifting the value to the right to get the value at 15 position 
+	bgtz $a0, Timer 			# If value greater than zero then timer interrupt happened
+
+
+Keyboard:
+	lw $s3, 0xffff0004			# Checking what keyboard value was entered and storing it in s3
+	beq $s3, 0x71, JumpM		# If value equal to 'q' then go to JumpM
+
+	mtc0 $0, $13				# Clearing Cause Register
+	lw $v0, s1 					# Restoring v0 and a0 values
+	lw $a0, s2				
+	
+	eret						# escape to main program
+
+JumpM:
+	addi $s4, $zero, -4 		# Making s4 -ve cause in future if the s4 value is negative then it directly quits
+	
+	mtc0 $0, $13 
+	lw $v0, s1
+	lw $a0, s2
+
+	eret
+
+Timer:
+	addi $t0, $t0, -1 			# decreasing the Second time by 1 so that when recomputes the entire value it computes it 1 second less value
+	addi $s4, $s4, 1			# increasing value of s4 to make positive so in future if value greater than zero it computes the entire thing
+	mtc0 $0, $13 			
+	lw $v0, s1
+	lw $a0, s2
+
+	eret
+
+.text
+.globl __start
+__start:
+
+	# to enable interupt we need to enable status register
+	# interupts are when press q or reach 00:00
+	
+	mfc0 $k0, $12   		# enabling Status Register
+	ori $k0, 0x8801 		# initializing the 1st 11th and 15 th values
+	mtc0 $k0, $12			# Clearing the Register
+
+	# enable keyboard control
+	lw $s2, 0xffff0000 		# Enabling the Keyboard Control
+	ori $s2, $s2, 0x02
+	sw $s2, 0xffff0000 
+	
+
+
+	li $v0, 4 				# printing out Seconds=
+	la $a0, sec
+	syscall
+
+	li $v0, 5 				# asking user input
+	syscall
+	move $t0, $v0 			# user enter value in t0
+
+Beg:
+
+	
+	blez $t0, End 			# if t0 is less than or equal to 0 then we have to quit the program as we have reached 00:00
+	
+	addi $t1, $zero, 60 	# dividing the number by 60 to get minutes and seconds
+	div $t0, $t1
+	mflo $t2
+	mfhi $t3
+
+	addi $t1, $zero, 10		# getting each individual values of minutes and seconds
+	div $t2, $t1
+	mflo $t2
+	mfhi $t4
+
+	div $t3, $t1 	
+	mflo $t3
+	mfhi $t5
+
+	addi $t2, $t2, 48 		# converting the integer value into ASCII
+	addi $t3, $t3, 48
+	addi $t4, $t4, 48
+	addi $t5, $t5, 48
+	
+	addi $t6, $zero, 0x3A 	# colon
+	addi $t7, $zero, 8 		# backspace
+	addi $t8, $zero, 0
+
+	la $t9, space 			#loading the initial address of the array space where all the backspace and the time values are stored
+	sb $t7, 0($t9) 			# entering value for the first bit
+	sb $t7, 1($t9)
+	sb $t7, 2($t9)
+	sb $t7, 3($t9)
+	sb $t7, 4($t9)
+	sb $t7, 5($t9)
+	sb $t2, 6($t9)
+	sb $t4, 7($t9)
+	sb $t6, 8($t9)
+	sb $t3, 9($t9)
+	sb $t5, 10($t9)
+	sb $t8, 11($t9)
+
+
+loop: 						# Gets every value stored in space
+	lb $s0, 0($t9) 			# loading value in space 0
+	beqz $s0, Continue 		# if value entered is zero hence it is null terminating number
+
+poll:
+	
+	lw $s1, 0xffff0008 		# Getting the value at poll to see if its ready
+	andi $s1, $s1, 0x01 	# if return 1 hence ready
+	beqz $s1, poll 			# loop until ready
+
+	sb $s0, 0xffff000c		# Storing value in display mapped
+	addi $t9, $t9, 1		# Going to the next element
+	j loop
+
+Continue: 
+
+	addi $s4, $zero, 0  	# initializing s4
+	
+	# 1 second counter 
+	li $t6, 0 		
+	mtc0 $t6, $9			# counting the milliseconds
+	li $t7, 100
+	mtc0 $t7, $11 			# counting the seconds 
+
+
+Infinite:
+
+	bltz $s4, End 			# if value less than 0 hence keyboard interupt hence quit directly
+	bgtz $s4, Beg 			# if value greater than 0 then it has to countdown hence goes to beginning
+	j Infinite
+
+
+End:
+	li $v0, 10 				# exit
+	syscall

@@ -1,0 +1,71 @@
+1. mipsiscool
+2. 1001000b
+3. 0x00400034
+4.	11 - 0x0000006d
+		0x00000069
+		0x00000070
+		0x00000073
+		0x00000069
+		0x00000073
+		0x00000063
+		0x0000006f
+		0x0000006f
+		0x0000006c
+		0x00000000
+
+	 11 -0x1001000b
+		0x1001000c
+		0x1001000d
+		0x1001000e
+		0x1001000f
+		0x10010010
+		0x10010011
+		0x10010012
+		0x10010013
+		0x10010014
+		0x10010015
+
+
+5. 	10010000 - 0x6d, 
+	10010001 - 0x69, 
+	10010002 - 0x70, 
+	10010003 - 0x73, 
+	10010004 - 0x69, 
+	10010005 - 0x73, 
+	10010006 - 0x63, 
+	10010007 - 0x6f, 
+	10010008 - 0x6f, 
+	10010009 - 0x6c,  
+	1001000a - 0
+
+
+6. 	0x00 - Null
+	0x24 - $
+	0x08 - backspace
+	0x21 - !
+
+7.	0x00240821(Hex) -> 0000 0000 0010 0100 0000 1000 0010 0001 (Binary positive number)
+			 
+
+
+
+8. 	.word -> 0x1001000 - 16
+	(Store 32 bit quantities in successive memory words)
+	.byte -> 0x100100f - 2
+	(store n values in successive byte of memory)
+	.align-> 
+	(Align next datum on 2^n byte boundary)
+	.space -> 0x1001011 - 9
+	(allocate n byte of space)
+	.asciiz-> 0x100101a - 4
+	(store string in memory and null terminate it)
+	.ascii -> 0x100101e - 2
+	(store string in memory)
+
+
+
+9. print $s0
+
+10. have another pointer pointing towards the beginning of the stack and then have the pointer move along with the value, using it to store the values.
+	then once we reach the end we subtract the pointer position from the original position of the original stack pointer. Devide the value of the 
+	difference by 4.

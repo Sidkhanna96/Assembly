@@ -1,0 +1,366 @@
+#
+# CMPUT 229: Cube Statistics Laboratory
+# Author: Jose Nelson Amaral
+# Date: December 2009
+#
+# Main program to read base array into memory,
+# read a several cube specifications
+# and print statistics for each cube.
+#
+	.data
+arena:
+	.space 32768
+Pedge:
+	.asciiz "edge = "
+PnegAvg:
+	.asciiz ", Negative Average = "
+PposAvg:	
+	.asciiz ", Positive Average = "
+Pnewline:
+	.asciiz "\n"
+
+# These data items will be used by the CubeStats method.
+	.globl countNeg
+	.globl countPos
+	.globl totalNeg
+	.globl totalPos
+totalNeg:	.word 0
+totalPos:	.word 0
+countNeg:	.word 0
+countPos:	.word 0
+
+######################################################################
+# Register usage:                                                    #
+# $s0: dimension                                                     #
+# $s1: size                                                          #
+# $s2: edge                                                          #
+# $s3: first                                                         #
+######################################################################
+	
+	.text
+	.globl power
+power:
+	li $v0, 1
+ploop:	
+	beqz $a1, pdone
+	mul $v0, $v0, $a0
+	subu $a1, $a1, 1
+	j ploop
+pdone:
+	jr $ra
+	
+	.globl main
+main:
+	subu     $sp, $sp, 4            # Adjust the stack to save $fp
+	sw	 $fp, 0($sp)            # Save $fp
+	move     $fp, $sp	        # $fp <-- $fp
+	subu     $sp, $sp, 4	        # Adjust stack to save $ra
+	sw	 $ra, -4($fp)	        # Save the return address ($ra)
+
+	# Get the dimension
+	li	 $v0, 5
+	syscall
+	move     $s0, $v0               # $s0 <-- dimension
+
+	# Get the size
+	li	 $v0, 5
+	syscall
+	move     $s1, $v0               # $s1 <-- size
+
+	# Calculate numelems
+	move     $a0, $s1	        # $a0 <-- size
+	move     $a1, $s0	        # $a1 <-- dimension
+	jal	 power		        # numelems <-- power(size,dimension)
+
+	# Read array
+	sll	 $v0,$v0,2	        # $v0 <-- 4*numelems
+	la	 $t5, arena	        # cursor <-- start of arena 
+	add	 $t6, $t5, $v0	        # $t6 <-- end of array
+ReadArray:
+	li	 $v0, 5
+	syscall			        # $v0 <-- element
+	sw	 $v0, 0($t5)	    # *cursor <-- element
+	addi $t5, $t5, 4	        # *cursor++
+	blt	 $t5, $t6, ReadArray # if(cursor<end of array) 
+
+forever:
+	# Read a Cube
+	la	 $s3, arena	        # first <-- start of arena
+	add	 $t2, $0, $0	        # d <-- 0
+	
+ReadCube:
+	# Get the corner, calculating its absolute location along the way
+	li	 $v0, 5
+	syscall			        # $v0 <-- cubed
+	move     $t4, $v0		# $t4 <-- cubed
+	blt	 $t4, $0, ExitMain	# if(cubed<0) ExitMain
+	move     $a0, $s1		# $a0 <-- size
+	sub      $a1, $s0, $t2		# $a1 <-- dimension - d
+	addi     $a1, $a1, -1       # $a1 <-- dimension - d - 1
+	jal	 power			# $v0 <-- power(size,d)
+	mul	 $t3, $t4, $v0	        # $t3 <-- cubed*power(size,dimension - d - 1)
+	sll      $t3, $t3, 2            # $t3 <-- 4*$t3 (offset)
+	add	 $s3, $s3, $t3	        # first = first + cubed*power(size,dimension - d - 1)
+	add	 $t2, $t2, 1	        # d <-- d + 1
+	blt	 $t2, $s0, ReadCube     # if(d<dimension) ReadCube
+
+	# Get the edge length
+	li	 $v0, 5
+	syscall				# $v0 <-- edge
+	move     $s2, $v0		# $s2 <-- edge
+
+	# Initialize totals and counts to be used by CubeStats
+	sw	$0, countNeg
+	sw	$0, countPos
+	sw	$0, totalNeg	
+	sw	$0, totalPos
+	# Set up the arguments and call CubeStats
+	move     $a0, $s0		# $a0 <-- dimension
+	move     $a1, $s1		# $a1 <-- size
+	move     $a2, $s3		# $a2 <-- first
+	move     $a3, $s2		# $a3 <-- edge
+	
+	jal	 CubeStats
+	# Get the averages into $t0, $t1
+	move     $t0, $v0
+	move     $t1, $v1
+
+	# Print the value of the edge
+	li       $v0, 4
+	la       $a0, Pedge
+	syscall
+	move     $a0, $s2
+	li       $v0, 1
+	syscall
+
+	# Print the value of the positive average
+	li       $v0, 4
+	la       $a0, PposAvg
+	syscall
+	move     $a0, $t1
+	li       $v0, 1
+	syscall
+
+	# Print the value of the negative average
+	li      $v0, 4
+	la      $a0, PnegAvg
+	syscall
+	move    $a0, $t0
+	li      $v0, 1
+	syscall
+	li		$v0, 4
+	la		$a0, Pnewline
+	syscall
+	j       forever
+	
+ExitMain:	
+	# Usual stuff at the end of the main
+	lw      $ra, -4($fp)
+	addu    $sp, $sp, 4
+	lw      $fp, 0($sp)
+	addu    $sp, $sp, 4
+	jr      $ra
+#####################################################################################
+#	                       							    #
+#	$s0 = dimensions of base array						    #
+#	$s1 = size of base array						    #
+#	$s2 = address of the element needed                  			    #
+#	$s3 = length of the cube edge						    #
+#	$s4 = size of cube edge ^ dimensions (number of elements)		    #
+#	$s5 = size of cube edge squared to track # of elements in one dimension     #
+#	$s6 = length of big cube - length of small cube				    #
+#	$s7 = calculation for directions to the next plain 			    #
+#										    #
+#####################################################################################
+
+.data
+	newline: 	.asciiz "\n"
+	space:		.asciiz " "
+
+.text
+	CubeStats:
+		# make space on stack for 7 $s registers
+		subu $sp, $sp, 4
+		sw $fp, 0($sp)
+		move $fp, $sp
+		subu $sp, $sp, 36
+		sw $s0, -4($fp)
+		sw $s1, -8($fp)
+		sw $s2, -12($fp)
+		sw $s3, -16($fp)
+		sw $s4, -20($fp)
+		sw $s5, -24($fp)
+		sw $s6, -28($fp)
+		sw $s7, -32($fp)
+		sw $ra, -36($fp)
+
+		li $t6, 1
+
+		# put $a0 to $a3 in $s1 to $s3
+		move     $s0, $a0	        # $s0 <-- dimensions
+		move     $s1, $a1		# $s1 <-- size of base array
+		move     $s2, $a2	        # $s2 <-- address
+		move     $s3, $a3		# $s3 <-- cube edge length
+
+		# get power(cube edge, dimension) into $s4
+		move     $a0, $s3	        # $a0 <-- cube edge length
+		move     $a1, $s0	        # $a1 <-- dimension
+		jal	 power			# call power(cube edge, dimension)
+		move     $s4, $v0		# $s4 <-- power(size, dimension)
+
+		# get power(cube edge, 2) into $s5
+		move     $a0, $s3	        # $a0 <-- cube edge length
+		li     	 $a1, 2	        	# $a1 <-- 2 for squared value
+		jal	 power		        # numelems <-- power(cube egde, 2)
+		move     $s5, $v0		# $s5 <-- power(cube edge, 2)
+
+		# make $t1, $t2, $t3 counters from $s4, $s5, $s3 respectively to 0
+		addi 	$t1, $s4, 0
+		addi 	$t2, $s5, 0
+		addi 	$t3, $s3, 0
+
+		# $s6 <---- length of big cube minus length of small cube
+		li 	$t4, 4
+		sub 	$s6, $s1, $s3
+		mul 	$s6, $s6, $t4
+
+		# $s7 <---- directions to next plain
+		li 	$t4, 4
+		mul	$s7, $s1, $s1
+		mul 	$s7, $s7, $t4
+
+		sumloop:
+			beqz	$t1, end	# if all elements are summed up, go to end
+			beqz 	$t3, nextline	# if all elements in the line are summed, move to next
+			beqz	$t2, nextplain	# if all elements in the plain are summed, move to next
+
+			lw	$t4, 0($s2)	# $t4 <-- address
+						
+			bgtz 	$t4, posfunc
+			bltz	$t4, negfunc 
+
+		posfunc:
+			# used to sum up Total Positive Numbers
+			lw  	$t0, totalPos
+			add 	$t0, $t0, $t4
+			sw	$t0, totalPos
+
+			# used to increment Positive Numbers counter
+			lw  	$t0, countPos
+			addi 	$t0, $t0, 1
+			sw	$t0, countPos
+			
+			li $v0, 1
+			add $a0,$zero, $t0
+			syscall
+			
+			li $v0, 4
+			la $a0, space
+			syscall
+			
+			j 	decrement
+
+		negfunc:
+			# used to sum up Total Negative Numbers
+			lw  	$t0, totalNeg
+			add 	$t0, $t0, $t4
+			sw	$t0, totalNeg
+
+			# used to increment Negative Numbers counter
+			lw 	$t0, countNeg
+			addi 	$t0, $t0, 1
+			sw	$t0, countNeg
+
+			j 	decrement
+
+		decrement:
+			# dereases each counter by 1 till it reaches 0
+			addi	$t1, $t1, -1
+			addi	$t2, $t2, -1
+			addi	$t3, $t3, -1
+
+			# moves on to the next integer address
+			addi	$s2, $s2, 4
+
+			j  	sumloop
+
+		nextplain:
+			# routes the pointer to the next plain for dimensions > 2
+			# does this by using the intial address given
+			move    $s2, $a2
+			mul  	$t5, $s7, $t6
+			add 	$s2, $s2, $t5
+
+			addi 	$t6, $t6, 1
+			addi 	$t2, $s5, 0
+
+			j 	sumloop
+
+		nextline:
+			# adds 4*(length of big square - length of small square) to address
+			add 	$s2, $s2, $s6
+			addi 	$t3, $s3, 0
+
+			j 	sumloop
+
+		end:
+			# get final values of counts and total from the main function
+			lw 	$t0, countNeg
+			lw 	$t1, countPos
+			lw 	$t2, totalNeg
+			lw 	$t3, totalPos
+			
+			li $v0, 1
+			add $a0, $zero, $t3
+			syscall
+			
+			li $v0, 4
+			la $a0, space
+			syscall
+			
+			li $v0, 1
+			add $a0,$zero, $t1
+			syscall
+			
+			li $v0, 4
+			la $a0, space
+			syscall
+
+
+			div 	$t2, $t0
+			mflo 	$v0
+			mfhi	$t7
+			beqz	$t7, skipadd
+			addi 	$v0, $v0, -1	# adds -1 to get floor of negative numbers average
+
+		skipadd:
+			div 	$t3, $t1
+			mflo 	$v1
+
+			beqz	$t0, makenegzero
+			beqz	$t1, makeposzero
+
+			j 		therest
+
+		makenegzero:
+			li 		$v0, 0
+			j 		therest
+
+		makeposzero:
+			li 		$v1, 0
+			j 		therest
+
+		therest:
+			lw $s0, -4($fp)
+			lw $s1, -8($fp)
+			lw $s2, -12($fp)
+			lw $s3, -16($fp)
+			lw $s4, -20($fp)
+			lw $s5, -24($fp)
+			lw $s6, -28($fp)
+			lw $s7, -32($fp)
+			lw $ra, -36($fp)
+			addu $sp, $sp, 40
+			lw $fp, -4($sp)
+
+	jr $ra

@@ -1,0 +1,42 @@
+#In line 26 the load word(lw) was changed to load byte(lb) because the Old valu of ' ' sace is to be represented by #a byte : lb	$a1 Old 
+
+#In line 37 the constant value is changed from 4 to 1 as previously it was skipping the space value by the constant #4 and now after changing it to 1 it traverses the string provided through each element : addi	$a0 $a0 1
+
+
+
+
+CODE: fixed :
+.data
+.align 2
+.space 3
+New:
+	.byte '-'
+Old:
+	.byte ' '
+Str:
+	.asciiz "Cmput 229 is the absolute bomb.\n"
+
+.text
+main:
+	la	$a0 Str	
+	lb	$a1 Old
+	lb	$a2 New
+
+	loop:
+		lb	$t0 0($a0)
+		beqz	$t0 done		
+		bne	$t0 $a1 continue
+		
+		sb	$a2 0($a0)
+
+		continue:
+		addi	$a0 $a0 1 
+		j	loop
+
+	done:
+
+	li	$v0 4
+	la	$a0 Str
+	syscall
+	
+	jr	$ra
